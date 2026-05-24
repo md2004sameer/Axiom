@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.Axiom.auth.LoginRequest;
 import com.Axiom.auth.SignupRequest;
 import com.Axiom.entity.User;
+import com.Axiom.security.JwtTokenProvider;
 import com.Axiom.service.CustomUserDetailsService;
 
 import java.util.Map;
@@ -27,10 +27,14 @@ public class AuthController {
 
     private final CustomUserDetailsService userDetailsService;
     private final AuthenticationManager authenticationManager;
+    private final JwtTokenProvider tokenProvider;
 
-    public AuthController(CustomUserDetailsService userDetailsService, AuthenticationManager authenticationManager) {
+    public AuthController(CustomUserDetailsService userDetailsService,
+                          AuthenticationManager authenticationManager,
+                          JwtTokenProvider tokenProvider) {
         this.userDetailsService = userDetailsService;
         this.authenticationManager = authenticationManager;
+        this.tokenProvider = tokenProvider;
     }
 
     @PostMapping("/signup")
@@ -50,7 +54,10 @@ public class AuthController {
                 new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        return ResponseEntity.ok(Map.of("message", "Login successful"));
+        String token = tokenProvider.createToken(request.getUsername());
+        return ResponseEntity.ok(Map.of(
+                "message", "Login successful",
+                "token", token
+        ));
     }
 }
