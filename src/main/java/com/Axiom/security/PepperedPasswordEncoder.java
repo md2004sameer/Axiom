@@ -6,24 +6,30 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class PepperedPasswordEncoder implements PasswordEncoder {
 
     private final PasswordEncoder delegate;
-    private final String pepper;
 
-    public PepperedPasswordEncoder(String pepper) {
+    public PepperedPasswordEncoder() {
         this.delegate = new BCryptPasswordEncoder();
-        this.pepper = pepper;
     }
 
     @Override
     public String encode(CharSequence rawPassword) {
-        return delegate.encode(applyPepper(rawPassword));
+        throw new UnsupportedOperationException("Use encode(rawPassword, pepper) for per-user peppered passwords");
+    }
+
+    public String encode(CharSequence rawPassword, String pepper) {
+        return delegate.encode(applyPepper(rawPassword, pepper));
     }
 
     @Override
     public boolean matches(CharSequence rawPassword, String encodedPassword) {
-        return delegate.matches(applyPepper(rawPassword), encodedPassword);
+        throw new UnsupportedOperationException("Use matches(rawPassword, encodedPassword, pepper) for per-user peppered passwords");
     }
 
-    private CharSequence applyPepper(CharSequence rawPassword) {
+    public boolean matches(CharSequence rawPassword, String encodedPassword, String pepper) {
+        return delegate.matches(applyPepper(rawPassword, pepper), encodedPassword);
+    }
+
+    private CharSequence applyPepper(CharSequence rawPassword, String pepper) {
         return rawPassword + pepper;
     }
 }
