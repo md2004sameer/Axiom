@@ -26,6 +26,7 @@ public class Comment {
     @JoinColumn(name = "author_id", nullable = false)
     private User author;
 
+    @jakarta.persistence.Column(nullable = false)
     private String text;
 
     private LocalDateTime createdAt = LocalDateTime.now();

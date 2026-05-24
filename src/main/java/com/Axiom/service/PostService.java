@@ -1,10 +1,11 @@
 package com.Axiom.service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +31,9 @@ public class PostService {
     private final CommentRepository commentRepository;
     private final RepostRepository repostRepository;
 
-    public PostService(PostRepository postRepository, UserRepository userRepository, PostLikeRepository postLikeRepository, CommentRepository commentRepository, RepostRepository repostRepository) {
+    public PostService(PostRepository postRepository, UserRepository userRepository,
+                       PostLikeRepository postLikeRepository, CommentRepository commentRepository,
+                       RepostRepository repostRepository) {
         this.postRepository = postRepository;
         this.userRepository = userRepository;
         this.postLikeRepository = postLikeRepository;
@@ -52,13 +55,21 @@ public class PostService {
     }
 
     @Transactional
+    public void deletePost(String username, Long postId) {
+        Post post = findPost(postId);
+        if (!post.getAuthor().getUsername().equals(username)) {
+            throw new IllegalStateException("You can only delete your own posts");
+        }
+        postRepository.delete(post);
+    }
+
+    @Transactional
     public Post likePost(String username, Long postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
-        Optional<PostLike> existing = postLikeRepository.findByPostAndUser(post, user);
-        if (existing.isPresent()) {
-            return post;
+        if (postLikeRepository.findByPostAndUser(post, user).isPresent()) {
+            throw new IllegalStateException("You have already liked this post");
         }
 
         PostLike like = new PostLike();
@@ -68,6 +79,19 @@ public class PostService {
 
         post.setLikeCount(post.getLikeCount() + 1);
         return postRepository.save(post);
+    }
+
+    @Transactional
+    public void unlikePost(String username, Long postId) {
+        User user = findUser(username);
+        Post post = findPost(postId);
+
+        PostLike like = postLikeRepository.findByPostAndUser(post, user)
+                .orElseThrow(() -> new IllegalStateException("You have not liked this post"));
+
+        postLikeRepository.delete(like);
+        post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
+        postRepository.save(post);
     }
 
     @Transactional
@@ -87,41 +111,60 @@ public class PostService {
     }
 
     @Transactional
+    public void deleteComment(String username, Long postId, Long commentId) {
+        Post post = findPost(postId);
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new EntityNotFoundException("Comment not found: " + commentId));
+
+        if (!comment.getAuthor().getUsername().equals(username)) {
+            throw new IllegalStateException("You can only delete your own comments");
+        }
+
+        commentRepository.delete(comment);
+        post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
+        postRepository.save(post);
+    }
+
+    @Transactional
     public Repost repost(String username, Long postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
+        if (repostRepository.findByOriginalPostAndUser(post, user).isPresent()) {
+            throw new IllegalStateException("You have already reposted this post");
+        }
+
         Repost repost = new Repost();
         repost.setOriginalPost(post);
         repost.setUser(user);
-        Repost saved = repostRepository.save(repost);
+        repostRepository.save(repost);
 
         post.setRepostCount(post.getRepostCount() + 1);
         postRepository.save(post);
-        return saved;
+        return repost;
     }
 
     @Transactional(readOnly = true)
     public PostResponse getPost(Long postId) {
-        Post post = findPost(postId);
-        return mapToResponse(post);
+        return mapToResponse(findPost(postId));
     }
 
     @Transactional(readOnly = true)
-    public List<PostResponse> listAllPosts() {
-        return postRepository.findAll().stream()
+    public List<PostResponse> listAllPosts(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return postRepository.findAllWithAuthor(pageable).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
     private PostResponse mapToResponse(Post post) {
-        List<String> likedBy = postLikeRepository.findAllByPost(post).stream()
+        List<String> likedBy = postLikeRepository.findAllByPostWithUser(post).stream()
                 .map(like -> like.getUser().getUsername())
                 .distinct()
                 .collect(Collectors.toList());
 
-        List<CommentResponse> comments = commentRepository.findAllByPost(post).stream()
-                .map(comment -> new CommentResponse(comment.getId(), comment.getAuthor().getUsername(), comment.getText(), comment.getCreatedAt()))
+        List<CommentResponse> comments = commentRepository.findAllByPostWithAuthor(post).stream()
+                .map(c -> new CommentResponse(c.getId(), c.getAuthor().getUsername(), c.getText(), c.getCreatedAt()))
                 .collect(Collectors.toList());
 
         return new PostResponse(
