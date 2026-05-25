@@ -17,4 +17,6 @@ public interface RepostRepository extends JpaRepository<Repost, Long> {
     Optional<Repost> findByOriginalPostAndUser(Post originalPost, User user);
 
     int countByOriginalPost(Post originalPost);
+
+    void deleteAllByOriginalPost(Post originalPost);
 }

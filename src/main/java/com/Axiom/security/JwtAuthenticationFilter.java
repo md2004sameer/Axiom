@@ -19,10 +19,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final UserDetailsService userDetailsService;
+    private final RevokedTokenStore revokedTokenStore;
 
-    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider,
+                                   UserDetailsService userDetailsService,
+                                   RevokedTokenStore revokedTokenStore) {
         this.tokenProvider = tokenProvider;
         this.userDetailsService = userDetailsService;
+        this.revokedTokenStore = revokedTokenStore;
     }
 
     @Override
@@ -31,7 +35,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (token != null && tokenProvider.validateToken(token)) {
+        if (token != null && tokenProvider.validateToken(token) && !revokedTokenStore.isRevoked(token)) {
             String username = tokenProvider.getUsername(token);
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
             UsernamePasswordAuthenticationToken authentication =

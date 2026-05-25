@@ -75,9 +75,22 @@ public class PostController {
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
+    @DeleteMapping("/{postId}/repost")
+    public ResponseEntity<PostResponse> unrepost(@PathVariable Long postId) {
+        postService.unrepost(currentUsername(), postId);
+        return ResponseEntity.ok(postService.getPost(postId));
+    }
+
     @GetMapping("/{postId}")
     public ResponseEntity<PostResponse> getPost(@PathVariable Long postId) {
         return ResponseEntity.ok(postService.getPost(postId));
+    }
+
+    @GetMapping("/feed")
+    public ResponseEntity<List<PostResponse>> feed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(postService.listFeed(currentUsername(), page, size));
     }
 
     @GetMapping

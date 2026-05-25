@@ -50,8 +50,7 @@ public class PostService {
         post.setCommentCount(0);
         post.setRepostCount(0);
         user.addPost(post);
-        userRepository.save(user);
-        return post;
+        return postRepository.saveAndFlush(post);
     }
 
     @Transactional
@@ -60,6 +59,12 @@ public class PostService {
         if (!post.getAuthor().getUsername().equals(username)) {
             throw new IllegalStateException("You can only delete your own posts");
         }
+        postLikeRepository.deleteAllByPost(post);
+        commentRepository.deleteAllByPost(post);
+        repostRepository.deleteAllByOriginalPost(post);
+        postLikeRepository.flush();
+        commentRepository.flush();
+        repostRepository.flush();
         postRepository.delete(post);
     }
 
@@ -75,10 +80,9 @@ public class PostService {
         PostLike like = new PostLike();
         like.setPost(post);
         like.setUser(user);
-        postLikeRepository.save(like);
+        postLikeRepository.saveAndFlush(like);
 
-        post.setLikeCount(post.getLikeCount() + 1);
-        return postRepository.save(post);
+        return synchronizeCounters(post);
     }
 
     @Transactional
@@ -90,8 +94,8 @@ public class PostService {
                 .orElseThrow(() -> new IllegalStateException("You have not liked this post"));
 
         postLikeRepository.delete(like);
-        post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
-        postRepository.save(post);
+        postLikeRepository.flush();
+        synchronizeCounters(post);
     }
 
     @Transactional
@@ -103,10 +107,9 @@ public class PostService {
         comment.setPost(post);
         comment.setAuthor(user);
         comment.setText(text);
-        Comment saved = commentRepository.save(comment);
+        Comment saved = commentRepository.saveAndFlush(comment);
 
-        post.setCommentCount(post.getCommentCount() + 1);
-        postRepository.save(post);
+        synchronizeCounters(post);
         return saved;
     }
 
@@ -119,10 +122,13 @@ public class PostService {
         if (!comment.getAuthor().getUsername().equals(username)) {
             throw new IllegalStateException("You can only delete your own comments");
         }
+        if (!comment.getPost().getId().equals(postId)) {
+            throw new IllegalStateException("Comment does not belong to this post");
+        }
 
         commentRepository.delete(comment);
-        post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
-        postRepository.save(post);
+        commentRepository.flush();
+        synchronizeCounters(post);
     }
 
     @Transactional
@@ -137,27 +143,55 @@ public class PostService {
         Repost repost = new Repost();
         repost.setOriginalPost(post);
         repost.setUser(user);
-        repostRepository.save(repost);
+        Repost saved = repostRepository.saveAndFlush(repost);
 
-        post.setRepostCount(post.getRepostCount() + 1);
-        postRepository.save(post);
-        return repost;
+        synchronizeCounters(post);
+        return saved;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
+    public void unrepost(String username, Long postId) {
+        User user = findUser(username);
+        Post post = findPost(postId);
+
+        Repost repost = repostRepository.findByOriginalPostAndUser(post, user)
+                .orElseThrow(() -> new IllegalStateException("You have not reposted this post"));
+
+        repostRepository.delete(repost);
+        repostRepository.flush();
+        synchronizeCounters(post);
+    }
+
+    @Transactional
     public PostResponse getPost(Long postId) {
         return mapToResponse(findPost(postId));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<PostResponse> listAllPosts(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return postRepository.findAllWithAuthor(pageable).stream()
+        return postRepository.findAllWithAuthor(pageable).getContent().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public List<PostResponse> listFeed(String username, int page, int size) {
+        User user = findUser(username);
+        List<User> followedUsers = List.copyOf(user.getFollowing());
+        if (followedUsers.isEmpty()) {
+            return List.of();
+        }
+
+        Pageable pageable = PageRequest.of(page, size);
+        return postRepository.findAllByAuthorInWithAuthor(followedUsers, pageable).getContent().stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
     private PostResponse mapToResponse(Post post) {
+        Post synchronizedPost = synchronizeCounters(post);
+
         List<String> likedBy = postLikeRepository.findAllByPostWithUser(post).stream()
                 .map(like -> like.getUser().getUsername())
                 .distinct()
@@ -168,13 +202,13 @@ public class PostService {
                 .collect(Collectors.toList());
 
         return new PostResponse(
-                post.getId(),
-                post.getAuthor().getUsername(),
-                post.getText(),
-                post.getCreatedAt(),
-                post.getLikeCount(),
-                post.getCommentCount(),
-                post.getRepostCount(),
+                synchronizedPost.getId(),
+                synchronizedPost.getAuthor().getUsername(),
+                synchronizedPost.getText(),
+                synchronizedPost.getCreatedAt(),
+                synchronizedPost.getLikeCount(),
+                synchronizedPost.getCommentCount(),
+                synchronizedPost.getRepostCount(),
                 likedBy,
                 comments
         );
@@ -188,5 +222,22 @@ public class PostService {
     private Post findPost(Long postId) {
         return postRepository.findById(postId)
                 .orElseThrow(() -> new EntityNotFoundException("Post not found: " + postId));
+    }
+
+    private Post synchronizeCounters(Post post) {
+        int likeCount = postLikeRepository.countByPost(post);
+        int commentCount = commentRepository.countByPost(post);
+        int repostCount = repostRepository.countByOriginalPost(post);
+
+        if (post.getLikeCount() != likeCount
+                || post.getCommentCount() != commentCount
+                || post.getRepostCount() != repostCount) {
+            post.setLikeCount(likeCount);
+            post.setCommentCount(commentCount);
+            post.setRepostCount(repostCount);
+            return postRepository.save(post);
+        }
+
+        return post;
     }
 }

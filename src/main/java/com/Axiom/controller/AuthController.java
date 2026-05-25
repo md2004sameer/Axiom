@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import com.Axiom.auth.LoginRequest;
 import com.Axiom.auth.SignupRequest;
 import com.Axiom.entity.User;
 import com.Axiom.security.JwtTokenProvider;
+import com.Axiom.security.RevokedTokenStore;
 import com.Axiom.service.CustomUserDetailsService;
 
 import java.util.Map;
@@ -27,13 +29,16 @@ public class AuthController {
     private final CustomUserDetailsService userDetailsService;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final RevokedTokenStore revokedTokenStore;
 
     public AuthController(CustomUserDetailsService userDetailsService,
                           AuthenticationManager authenticationManager,
-                          JwtTokenProvider tokenProvider) {
+                          JwtTokenProvider tokenProvider,
+                          RevokedTokenStore revokedTokenStore) {
         this.userDetailsService = userDetailsService;
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
+        this.revokedTokenStore = revokedTokenStore;
     }
 
     @PostMapping("/signup")
@@ -58,5 +63,24 @@ public class AuthController {
                 "message", "Login successful",
                 "token", token
         ));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        String token = resolveBearerToken(authorizationHeader);
+        if (token == null || !tokenProvider.validateToken(token)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Valid bearer token is required");
+        }
+
+        revokedTokenStore.revoke(token, tokenProvider.getExpiration(token).toInstant());
+        return ResponseEntity.ok(Map.of("message", "Logout successful"));
+    }
+
+    private String resolveBearerToken(String authorizationHeader) {
+        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            return authorizationHeader.substring(7);
+        }
+        return null;
     }
 }

@@ -17,4 +17,8 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
 
     @Query("SELECT c FROM Comment c JOIN FETCH c.author WHERE c.post = :post")
     List<Comment> findAllByPostWithAuthor(@Param("post") Post post);
+
+    int countByPost(Post post);
+
+    void deleteAllByPost(Post post);
 }
