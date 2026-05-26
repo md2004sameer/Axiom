@@ -1,16 +1,8 @@
 package com.Axiom.entity;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.Indexed;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -21,53 +13,43 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Entity
+@Document(collection = "users")
 @Getter
 @Setter
 @NoArgsConstructor
-@Table(name = "users")
 public class User {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private String id;
 
-    @Column(nullable = false, unique = true)
+    @Indexed(unique = true)
     private String username;
 
-    @Column(nullable = false)
     private String password;
 
-    @Column(nullable = false)
     private String pepper;
 
-    @Column(nullable = true)
     private String profilePictureUrl;
 
-    @Column(length = 500)
     private String bio;
 
-    @OneToMany(mappedBy = "author", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Post> posts = new ArrayList<>();
+    private List<String> postIds = new ArrayList<>();
 
-    @ManyToMany
-    @JoinTable(
-            name = "user_follows",
-            joinColumns = @JoinColumn(name = "follower_id"),
-            inverseJoinColumns = @JoinColumn(name = "following_id")
-    )
-    private Set<User> following = new HashSet<>();
+    private Set<String> following = new HashSet<>();
 
-    @ManyToMany(mappedBy = "following")
-    private Set<User> followers = new HashSet<>();
+    private Set<String> followers = new HashSet<>();
 
     public void addPost(Post post) {
-        posts.add(post);
+        if (post.getId() != null) {
+            postIds.add(post.getId());
+        }
         post.setAuthor(this);
     }
 
     public void removePost(Post post) {
-        posts.remove(post);
+        if (post.getId() != null) {
+            postIds.remove(post.getId());
+        }
         post.setAuthor(null);
     }
 }

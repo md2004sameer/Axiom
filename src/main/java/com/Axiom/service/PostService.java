@@ -1,13 +1,12 @@
 package com.Axiom.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import jakarta.persistence.EntityNotFoundException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.Axiom.entity.Comment;
 import com.Axiom.entity.Post;
@@ -41,150 +40,140 @@ public class PostService {
         this.repostRepository = repostRepository;
     }
 
-    @Transactional
     public Post createPost(String username, String text) {
         User user = findUser(username);
         Post post = new Post();
         post.setText(text);
+        post.setAuthorId(user.getId());
+        post.setAuthor(user);
+        post.setCreatedAt(LocalDateTime.now());
         post.setLikeCount(0);
         post.setCommentCount(0);
         post.setRepostCount(0);
         user.addPost(post);
-        return postRepository.saveAndFlush(post);
+        return postRepository.save(post);
     }
 
-    @Transactional
-    public void deletePost(String username, Long postId) {
+    public void deletePost(String username, String postId) {
         Post post = findPost(postId);
         if (!post.getAuthor().getUsername().equals(username)) {
             throw new IllegalStateException("You can only delete your own posts");
         }
-        postLikeRepository.deleteAllByPost(post);
-        commentRepository.deleteAllByPost(post);
-        repostRepository.deleteAllByOriginalPost(post);
-        postLikeRepository.flush();
-        commentRepository.flush();
-        repostRepository.flush();
+        postLikeRepository.deleteAllByPostId(post.getId());
+        commentRepository.deleteAllByPostId(post.getId());
+        repostRepository.deleteAllByOriginalPostId(post.getId());
         postRepository.delete(post);
     }
 
-    @Transactional
-    public Post likePost(String username, Long postId) {
+    public Post likePost(String username, String postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
-        if (postLikeRepository.findByPostAndUser(post, user).isPresent()) {
+        if (postLikeRepository.findByPostIdAndUserId(post.getId(), user.getId()).isPresent()) {
             throw new IllegalStateException("You have already liked this post");
         }
 
         PostLike like = new PostLike();
-        like.setPost(post);
-        like.setUser(user);
-        postLikeRepository.saveAndFlush(like);
+        like.setPostId(post.getId());
+        like.setUserId(user.getId());
+        postLikeRepository.save(like);
 
         return synchronizeCounters(post);
     }
 
-    @Transactional
-    public void unlikePost(String username, Long postId) {
+    public void unlikePost(String username, String postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
-        PostLike like = postLikeRepository.findByPostAndUser(post, user)
+        PostLike like = postLikeRepository.findByPostIdAndUserId(post.getId(), user.getId())
                 .orElseThrow(() -> new IllegalStateException("You have not liked this post"));
 
         postLikeRepository.delete(like);
-        postLikeRepository.flush();
         synchronizeCounters(post);
     }
 
-    @Transactional
-    public Comment addComment(String username, Long postId, String text) {
+    public Comment addComment(String username, String postId, String text) {
         User user = findUser(username);
         Post post = findPost(postId);
 
         Comment comment = new Comment();
+        comment.setPostId(post.getId());
         comment.setPost(post);
+        comment.setAuthorId(user.getId());
         comment.setAuthor(user);
         comment.setText(text);
-        Comment saved = commentRepository.saveAndFlush(comment);
+        comment.setCreatedAt(LocalDateTime.now());
+        Comment saved = commentRepository.save(comment);
 
         synchronizeCounters(post);
         return saved;
     }
 
-    @Transactional
-    public void deleteComment(String username, Long postId, Long commentId) {
+    public void deleteComment(String username, String postId, String commentId) {
         Post post = findPost(postId);
         Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new EntityNotFoundException("Comment not found: " + commentId));
+                .orElseThrow(() -> new RuntimeException("Comment not found: " + commentId));
 
         if (!comment.getAuthor().getUsername().equals(username)) {
             throw new IllegalStateException("You can only delete your own comments");
         }
-        if (!comment.getPost().getId().equals(postId)) {
+        if (!comment.getPostId().equals(postId)) {
             throw new IllegalStateException("Comment does not belong to this post");
         }
 
         commentRepository.delete(comment);
-        commentRepository.flush();
         synchronizeCounters(post);
     }
 
-    @Transactional
-    public Repost repost(String username, Long postId) {
+    public Repost repost(String username, String postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
-        if (repostRepository.findByOriginalPostAndUser(post, user).isPresent()) {
+        if (repostRepository.findByOriginalPostIdAndUserId(post.getId(), user.getId()).isPresent()) {
             throw new IllegalStateException("You have already reposted this post");
         }
 
         Repost repost = new Repost();
-        repost.setOriginalPost(post);
-        repost.setUser(user);
-        Repost saved = repostRepository.saveAndFlush(repost);
+        repost.setOriginalPostId(post.getId());
+        repost.setUserId(user.getId());
+        repost.setCreatedAt(LocalDateTime.now());
+        Repost saved = repostRepository.save(repost);
 
         synchronizeCounters(post);
         return saved;
     }
 
-    @Transactional
-    public void unrepost(String username, Long postId) {
+    public void unrepost(String username, String postId) {
         User user = findUser(username);
         Post post = findPost(postId);
 
-        Repost repost = repostRepository.findByOriginalPostAndUser(post, user)
+        Repost repost = repostRepository.findByOriginalPostIdAndUserId(post.getId(), user.getId())
                 .orElseThrow(() -> new IllegalStateException("You have not reposted this post"));
 
         repostRepository.delete(repost);
-        repostRepository.flush();
         synchronizeCounters(post);
     }
 
-    @Transactional
-    public PostResponse getPost(Long postId) {
+    public PostResponse getPost(String postId) {
         return mapToResponse(findPost(postId));
     }
 
-    @Transactional
     public List<PostResponse> listAllPosts(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return postRepository.findAllWithAuthor(pageable).getContent().stream()
+        return postRepository.findAllByOrderByCreatedAtDesc(pageable).getContent().stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
-    @Transactional
     public List<PostResponse> listFeed(String username, int page, int size) {
         User user = findUser(username);
-        List<User> followedUsers = List.copyOf(user.getFollowing());
-        if (followedUsers.isEmpty()) {
+        List<String> followedUserIds = user.getFollowing().stream().toList();
+        if (followedUserIds.isEmpty()) {
             return List.of();
         }
 
         Pageable pageable = PageRequest.of(page, size);
-        return postRepository.findAllByAuthorInWithAuthor(followedUsers, pageable).getContent().stream()
+        return postRepository.findAllByAuthorIdInOrderByCreatedAtDesc(followedUserIds, pageable).getContent().stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -192,12 +181,15 @@ public class PostService {
     private PostResponse mapToResponse(Post post) {
         Post synchronizedPost = synchronizeCounters(post);
 
-        List<String> likedBy = postLikeRepository.findAllByPostWithUser(post).stream()
-                .map(like -> like.getUser().getUsername())
+        List<String> likedBy = postLikeRepository.findAllByPostId(post.getId()).stream()
+                .map(like -> {
+                    User user = userRepository.findById(like.getUserId()).orElse(null);
+                    return user != null ? user.getUsername() : "unknown";
+                })
                 .distinct()
                 .collect(Collectors.toList());
 
-        List<CommentResponse> comments = commentRepository.findAllByPostWithAuthor(post).stream()
+        List<CommentResponse> comments = commentRepository.findAllByPostId(post.getId()).stream()
                 .map(c -> new CommentResponse(c.getId(), c.getAuthor().getUsername(), c.getText(), c.getCreatedAt()))
                 .collect(Collectors.toList());
 
@@ -216,18 +208,18 @@ public class PostService {
 
     private User findUser(String username) {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
     }
 
-    private Post findPost(Long postId) {
+    private Post findPost(String postId) {
         return postRepository.findById(postId)
-                .orElseThrow(() -> new EntityNotFoundException("Post not found: " + postId));
+                .orElseThrow(() -> new RuntimeException("Post not found: " + postId));
     }
 
     private Post synchronizeCounters(Post post) {
-        int likeCount = postLikeRepository.countByPost(post);
-        int commentCount = commentRepository.countByPost(post);
-        int repostCount = repostRepository.countByOriginalPost(post);
+        int likeCount = postLikeRepository.countByPostId(post.getId());
+        int commentCount = commentRepository.countByPostId(post.getId());
+        int repostCount = repostRepository.countByOriginalPostId(post.getId());
 
         if (post.getLikeCount() != likeCount
                 || post.getCommentCount() != commentCount

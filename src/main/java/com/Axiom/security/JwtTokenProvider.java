@@ -25,19 +25,26 @@ public class JwtTokenProvider {
             @Value("${security.jwt.secret}") String secret,
             @Value("${security.jwt.expiration-ms:3600000}") long validityInMilliseconds) {
         if (secret == null || secret.isBlank()) {
-            throw new IllegalStateException("JWT_SECRET env var must be configured with a non-blank value");
+            throw new IllegalStateException(
+                "JWT_SECRET configuration is missing or empty. " +
+                "Ensure .env file contains JWT_SECRET or set security.jwt.secret property.");
         }
         if (secret.startsWith("default-secret")) {
-            throw new IllegalStateException("JWT_SECRET env var must not use the default development secret");
+            throw new IllegalStateException("JWT_SECRET must not use the default development secret");
         }
 
         byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
+        System.out.println("✓ JWT Secret loaded: " + secret.substring(0, Math.min(20, secret.length())) + "... (length: " + secretBytes.length + " bytes)");
+        
         if (secretBytes.length < 32) {
-            throw new IllegalStateException("JWT_SECRET env var must be at least 32 bytes for HS256");
+            throw new IllegalStateException(
+                "JWT_SECRET must be at least 32 bytes for HS256 algorithm. " +
+                "Current length: " + secretBytes.length + " bytes");
         }
 
         this.secretKey = Keys.hmacShaKeyFor(secretBytes);
         this.validityInMilliseconds = validityInMilliseconds;
+        System.out.println("✓ JwtTokenProvider initialized successfully with " + validityInMilliseconds + "ms expiration");
     }
 
     public String createToken(String username) {

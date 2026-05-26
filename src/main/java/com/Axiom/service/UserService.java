@@ -1,9 +1,6 @@
 package com.Axiom.service;
 
-import jakarta.persistence.EntityNotFoundException;
-
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.Axiom.entity.User;
 import com.Axiom.repository.UserRepository;
@@ -19,12 +16,10 @@ public class UserService {
         this.userRepository = userRepository;
     }
 
-    @Transactional(readOnly = true)
     public UserProfileResponse getProfile(String username) {
         return mapToProfile(findUser(username));
     }
 
-    @Transactional
     public UserProfileResponse updateProfile(String username, UpdateProfileRequest request) {
         User user = findUser(username);
         user.setBio(request.getBio());
@@ -32,7 +27,6 @@ public class UserService {
         return mapToProfile(userRepository.save(user));
     }
 
-    @Transactional
     public UserProfileResponse follow(String currentUsername, String usernameToFollow) {
         if (currentUsername.equals(usernameToFollow)) {
             throw new IllegalStateException("You cannot follow yourself");
@@ -40,16 +34,17 @@ public class UserService {
 
         User currentUser = findUser(currentUsername);
         User userToFollow = findUser(usernameToFollow);
-        if (!currentUser.getFollowing().add(userToFollow)) {
+        
+        if (!currentUser.getFollowing().add(userToFollow.getId())) {
             throw new IllegalStateException("You already follow this user");
         }
-        userToFollow.getFollowers().add(currentUser);
+        userToFollow.getFollowers().add(currentUser.getId());
 
         userRepository.save(currentUser);
+        userRepository.save(userToFollow);
         return mapToProfile(userToFollow);
     }
 
-    @Transactional
     public UserProfileResponse unfollow(String currentUsername, String usernameToUnfollow) {
         if (currentUsername.equals(usernameToUnfollow)) {
             throw new IllegalStateException("You cannot unfollow yourself");
@@ -57,12 +52,14 @@ public class UserService {
 
         User currentUser = findUser(currentUsername);
         User userToUnfollow = findUser(usernameToUnfollow);
-        if (!currentUser.getFollowing().remove(userToUnfollow)) {
+        
+        if (!currentUser.getFollowing().remove(userToUnfollow.getId())) {
             throw new IllegalStateException("You are not following this user");
         }
-        userToUnfollow.getFollowers().remove(currentUser);
+        userToUnfollow.getFollowers().remove(currentUser.getId());
 
         userRepository.save(currentUser);
+        userRepository.save(userToUnfollow);
         return mapToProfile(userToUnfollow);
     }
 
@@ -78,6 +75,6 @@ public class UserService {
 
     private User findUser(String username) {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + username));
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
     }
 }

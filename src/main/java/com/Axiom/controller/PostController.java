@@ -39,50 +39,50 @@ public class PostController {
     }
 
     @DeleteMapping("/{postId}")
-    public ResponseEntity<Void> deletePost(@PathVariable Long postId) {
+    public ResponseEntity<Void> deletePost(@PathVariable String postId) {
         postService.deletePost(currentUsername(), postId);
         return ResponseEntity.noContent().build();
     }
     
 
     @PostMapping("/{postId}/like")
-    public ResponseEntity<PostResponse> likePost(@PathVariable Long postId) {
+    public ResponseEntity<PostResponse> likePost(@PathVariable String postId) {
         postService.likePost(currentUsername(), postId);
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @DeleteMapping("/{postId}/like")
-    public ResponseEntity<PostResponse> unlikePost(@PathVariable Long postId) {
+    public ResponseEntity<PostResponse> unlikePost(@PathVariable String postId) {
         postService.unlikePost(currentUsername(), postId);
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @PostMapping("/{postId}/comment")
-    public ResponseEntity<PostResponse> commentPost(@PathVariable Long postId, @Valid @RequestBody CommentRequest request) {
+    public ResponseEntity<PostResponse> commentPost(@PathVariable String postId, @Valid @RequestBody CommentRequest request) {
         postService.addComment(currentUsername(), postId, request.getText());
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @DeleteMapping("/{postId}/comment/{commentId}")
-    public ResponseEntity<PostResponse> deleteComment(@PathVariable Long postId, @PathVariable Long commentId) {
+    public ResponseEntity<PostResponse> deleteComment(@PathVariable String postId, @PathVariable String commentId) {
         postService.deleteComment(currentUsername(), postId, commentId);
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @PostMapping("/{postId}/repost")
-    public ResponseEntity<PostResponse> repost(@PathVariable Long postId) {
+    public ResponseEntity<PostResponse> repost(@PathVariable String postId) {
         postService.repost(currentUsername(), postId);
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @DeleteMapping("/{postId}/repost")
-    public ResponseEntity<PostResponse> unrepost(@PathVariable Long postId) {
+    public ResponseEntity<PostResponse> unrepost(@PathVariable String postId) {
         postService.unrepost(currentUsername(), postId);
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
     @GetMapping("/{postId}")
-    public ResponseEntity<PostResponse> getPost(@PathVariable Long postId) {
+    public ResponseEntity<PostResponse> getPost(@PathVariable String postId) {
         return ResponseEntity.ok(postService.getPost(postId));
     }
 
